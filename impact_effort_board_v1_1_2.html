@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Impact vs Effort Board — v1.1.2 (initiatives + slices)</title>
+<style>
+:root{--bg:#0f1115;--panel:#161a22;--panel-2:#1d2330;--text:#e7e8ea;--muted:#9aa1ac;--accent:#7aa2ff;--grid:#2a3142;--line:#2d3447;--good:#58d68d;--warn:#f5b041;--bad:#e74c3c;--purple:#b289ff}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:14px/1.35 system-ui,-apple-system,Segoe UI,Roboto,Inter,"Helvetica Neue",Arial,"Noto Sans"}
+header{padding:16px 20px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:12px}
+header h1{font-size:18px;margin:0;font-weight:600;letter-spacing:.2px}header .meta{color:var(--muted);font-size:12px}
+.container{display:grid;grid-template-columns:360px 1fr 360px;gap:14px;padding:14px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px}.card h2{font-size:14px;margin:0 0 10px;font-weight:600;letter-spacing:.2px}
+label{display:block;font-size:12px;color:var(--muted);margin:8px 0 4px}
+input[type="text"],input[type="number"],textarea,select{width:100%;padding:8px 10px;border-radius:8px;border:1px solid var(--line);background:var(--panel-2);color:var(--text)}
+textarea{resize:vertical;min-height:60px}.row{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.btn{appearance:none;border:1px solid var(--line);background:var(--panel-2);color:var(--text);padding:8px 10px;border-radius:8px;cursor:pointer;font-weight:600}
+.btn.primary{background:var(--accent);color:#081021;border-color:transparent}.btn.small{font-size:12px;padding:6px 8px}
+.matrix-wrap{position:relative}svg{width:100%;height:520px;background:var(--panel);border-radius:10px;display:block}
+.axis text{fill:var(--muted);font-size:11px}.quad-label{fill:var(--muted);font-size:11px}
+.point{cursor:grab}.point.dragging{cursor:grabbing}.point text{font-size:11px;fill:var(--text);stroke:#000;stroke-width:2px;paint-order:stroke}
+.legend{display:flex;gap:10px;align-items:center;color:var(--muted);font-size:12px;margin-top:6px}
+.dot{width:10px;height:10px;border-radius:50%;display:inline-block}.dot.qw{background:var(--good)}.dot.bb{background:var(--accent)}.dot.fi{background:var(--warn)}.dot.ts{background:var(--bad)}.pill{font-size:11px;padding:2px 6px;border-radius:999px;border:1px solid var(--line)}.pill.tag{border-color:var(--purple);color:var(--purple)}.pill.good{border-color:var(--good);color:var(--good)}.pill.warn{border-color:var(--warn);color:var(--warn)}.pill.bad{border-color:var(--bad);color:var(--bad)}
+.task{border:1px solid var(--line);background:var(--panel-2);border-radius:8px;padding:8px;margin-bottom:8px}.mono{font-family:ui-monospace,Menlo,Consolas,monospace}
+</style>
+</head>
+<body>
+<header>
+  <h1>Impact vs Effort Board</h1>
+  <div class="meta">v1.1.2 — Initiatives & slices · Score = (Impact × Confidence) ÷ Effort</div>
+  <div style="margin-left:auto;display:flex;gap:8px">
+    <button id="exportBtn" class="btn">Export</button>
+    <label class="btn" style="position:relative;overflow:hidden">Import<input id="importFile" type="file" accept="application/json" style="position:absolute;inset:0;opacity:0"></label>
+    <button id="demoBtn" class="btn">Load demo</button>
+    <button id="resetBtn" class="btn">Reset</button>
+  </div>
+</header>
+<div class="container">
+  <section class="card">
+    <h2>Add / Edit Item</h2>
+    <form id="taskForm">
+      <input type="hidden" id="taskId">
+      <label for="type">Type</label><select id="type"><option value="slice" selected>Slice (actionable)</option><option value="initiative">Initiative (parent)</option></select>
+      <label for="title">Title</label><input id="title" required placeholder="e.g., 'Marketing request system'">
+      <div id="parentWrap" style="display:none"><label for="parentId">Parent initiative</label><select id="parentId"></select></div>
+      <div class="row"><div><label for="impact">Impact (1–5)</label><input id="impact" type="number" min="1" max="5" value="3"></div><div><label for="effort">Effort (1–5)</label><input id="effort" type="number" min="1" max="5" value="3"></div></div>
+      <div class="row"><div><label for="confidence">Confidence (50–100%)</label><input id="confidence" type="number" min="50" max="100" value="80"></div><div><label for="timeHrs">Time (hrs)</label><input id="timeHrs" type="number" min="0" step="0.25" placeholder="e.g., 1.5"></div></div>
+      <label for="outcome">Outcome metric (optional)</label><input id="outcome" placeholder="e.g., SLA < 48h, reduce nav friction">
+      <div class="row"><div><label for="reversibility">Reversibility</label><select id="reversibility"><option value="">—</option><option>Two-way door (easy to revert)</option><option>One-way door (hard to revert)</option></select></div><div><label for="costDelay">Cost of delay</label><select id="costDelay"><option value="">—</option><option>Low</option><option>Medium</option><option>High</option></select></div></div>
+      <label for="notes">Notes</label><textarea id="notes"></textarea>
+      <div style="margin-top:8px;display:flex;gap:8px"><button class="btn primary" type="submit">Save</button><button id="clearBtn" type="button" class="btn">Clear</button></div>
+    </form>
+  </section>
+  <section class="card">
+    <h2>Impact vs Effort Matrix</h2>
+    <div class="matrix-wrap"><svg id="matrix" viewBox="0 0 700 520" role="img" aria-label="Impact vs Effort matrix"></svg></div>
+    <div class="legend"><span class="dot qw"></span> Quick Wins <span class="dot bb"></span> Big Bets <span class="dot fi"></span> Fill-ins <span class="dot ts"></span> Time Sinks</div>
+  </section>
+  <section class="card">
+    <h2>Next up (Slices)</h2>
+    <div id="nextList"></div>
+    <h2>Initiatives</h2>
+    <div id="initList"></div>
+    <h2>All slices</h2>
+    <div id="sliceList"></div>
+  </section>
+</div>
+<script>
+(function(){
+  const ids=['taskForm','taskId','type','parentWrap','parentId','title','impact','effort','confidence','timeHrs','outcome','reversibility','costDelay','notes','matrix','nextList','initList','sliceList','exportBtn','importFile','demoBtn','resetBtn','clearBtn'];
+  const el = Object.fromEntries(ids.map(id=>[id,document.getElementById(id)]));
+  const LS='impact_effort_tasks_v1_1_2'; let tasks = load()||[];
+  function load(){try{return JSON.parse(localStorage.getItem(LS)||'[]')}catch{return[]}}
+  function save(){localStorage.setItem(LS,JSON.stringify(tasks))}
+  const clamp=(v,a,b)=>Math.max(a,Math.min(b,v)); const num=(v,d=0)=>{const n=Number(v);return Number.isFinite(n)?n:d}; const uid=()=>Math.random().toString(36).slice(2,9);
+  const items={inits:()=>tasks.filter(t=>t.type==='initiative'),slices:()=>tasks.filter(t=>t.type==='slice'),children:id=>tasks.filter(t=>t.type==='slice'&&t.parentId===id)};
+  const ice=t=> (clamp(num(t.impact,1),1,5) * clamp(num(t.confidence,80),50,100)/100) / clamp(num(t.effort,1),1,5);
+  const perHr=t=> (t.timeHrs>0)? ice(t)/t.timeHrs : -Infinity;
+  const quad=t=>{const hiI=(t.impact||0)>=3,hiE=(t.effort||0)>=3;return hiI&&!hiE?'Quick Win':hiI&&hiE?'Big Bet':!hiI&&!hiE?'Fill-in':'Time Sink'};
+
+  function refreshParents(sel){ el.parentId.innerHTML='<option value="">—</option>'+items.inits().map(i=>`<option value="${i.id}">${i.title.replace(/[&<>"]/g,'')}</option>`).join(''); if(sel) el.parentId.value=sel; }
+  function onType(){ el.parentWrap.style.display = el.type.value==='slice' ? 'block' : 'none'; }
+  el.type.addEventListener('change', onType);
+
+  el.taskForm.addEventListener('submit',e=>{
+    e.preventDefault();
+    const type = el.type.value==='initiative'?'initiative':'slice';
+    const t={ id:el.taskId.value||uid(), type, parentId:(type==='slice'&&el.parentId.value)?el.parentId.value:undefined, title:el.title.value.trim(),
+      impact:clamp(num(el.impact.value,3),1,5), effort:clamp(num(el.effort.value,3),1,5), confidence:clamp(num(el.confidence.value,80),50,100),
+      timeHrs:el.timeHrs.value?Math.max(0,num(el.timeHrs.value,0)):undefined, outcome:el.outcome.value.trim()||undefined,
+      reversibility:el.reversibility.value||undefined, costDelay:el.costDelay.value||undefined, notes:el.notes.value.trim()||undefined,
+      createdAt:new Date().toISOString() };
+    if(!t.title) return;
+    const i=tasks.findIndex(x=>x.id===t.id); if(i>=0){ t.createdAt=tasks[i].createdAt; tasks[i]=t; } else tasks.push(t);
+    save(); render(); clear();
+  });
+  el.clearBtn.addEventListener('click', clear);
+  function clear(){ el.taskId.value=''; el.taskForm.reset(); el.type.value='slice'; el.impact.value=3; el.effort.value=3; el.confidence.value=80; onType(); refreshParents(); }
+
+  function edit(id){ const t=tasks.find(x=>x.id===id); if(!t) return; el.taskId.value=t.id; el.type.value=t.type||'slice'; onType(); refreshParents(t.parentId); el.parentId.value=t.parentId||'';
+    el.title.value=t.title; el.impact.value=t.impact??3; el.effort.value=t.effort??3; el.confidence.value=t.confidence??80; el.timeHrs.value=t.timeHrs??''; el.outcome.value=t.outcome??''; el.reversibility.value=t.reversibility??''; el.costDelay.value=t.costDelay??''; el.notes.value=t.notes??''; window.scrollTo({top:0,behavior:'smooth'}); }
+  function del_(id){ const it=tasks.find(t=>t.id===id); if(!it) return;
+    if(it.type==='initiative'){ const kids=items.children(id); if(kids.length){ if(confirm('Delete initiative AND its slices? (OK = delete both, Cancel = only initiative)')){ tasks=tasks.filter(t=>t.id!==id&&t.parentId!==id);} else { tasks=tasks.filter(t=>t.id!==id).map(t=>t.parentId===id?{...t,parentId:undefined}:t);} } else { tasks=tasks.filter(t=>t.id!==id);} }
+    else { tasks=tasks.filter(t=>t.id!==id); }
+    save(); render();
+  }
+  window.edit=edit; window.del_=del_;
+
+  const M={l:60,r:20,t:20,b:40,W:700,H:520}; const sx=e=>M.l+((e-1)/4)*(M.W-M.l-M.r); const sy=i=>M.t+(1-((i-1)/4))*(M.H-M.t-M.b);
+  const ix=px=>1+4*((px-M.l)/(M.W-M.l-M.r)); const iy=py=>1+4*(1-((py-M.t)/(M.H-M.t-M.b)));
+
+  function drawAxes(){
+    const svg=el.matrix; while(svg.firstChild) svg.removeChild(svg.firstChild);
+    const NS="http://www.w3.org/2000/svg"; const grid=document.createElementNS(NS,'g');
+    for(let i=1;i<=5;i++){const x=sx(i),y=sy(i); const vl=document.createElementNS(NS,'line');vl.setAttribute('x1',x);vl.setAttribute('y1',M.t);vl.setAttribute('x2',x);vl.setAttribute('y2',M.H-M.b);vl.setAttribute('stroke','#2a3142');vl.setAttribute('stroke-dasharray','2 3');grid.appendChild(vl);
+      const hl=document.createElementNS(NS,'line');hl.setAttribute('x1',M.l);hl.setAttribute('y1',y);hl.setAttribute('x2',M.W-M.r);hl.setAttribute('y2',y);hl.setAttribute('stroke','#2a3142');hl.setAttribute('stroke-dasharray','2 3');grid.appendChild(hl);}
+    svg.appendChild(grid);
+    const ax=document.createElementNS(NS,'g'); const tx=(x,y,txt,a='middle')=>{const t=document.createElementNS(NS,'text');t.setAttribute('x',x);t.setAttribute('y',y);t.setAttribute('text-anchor',a);t.textContent=txt;return t};
+    for(let i=1;i<=5;i++){ax.appendChild(tx(sx(i),M.H-12,String(i),'middle')); ax.appendChild(tx(24,sy(i)+4,String(i),'middle'));}
+    const xt=tx(M.W/2,M.H-2,'Effort →','middle'); const yt=tx(12,M.H/2,'↑ Impact','middle'); yt.setAttribute('transform',`rotate(-90 12 ${M.H/2})`); ax.appendChild(xt); ax.appendChild(yt); svg.appendChild(ax);
+    const midX=sx(3),midY=sy(3); const qg=document.createElementNS(NS,'g');
+    const q=(x,y,txt)=>{const t=tx(x,y,txt,'middle'); t.setAttribute('class','quad-label'); return t};
+    qg.appendChild(q((M.l+midX)/2,(M.t+midY)/2,'Quick Wins')); qg.appendChild(q((midX+(M.W-M.r))/2,(M.t+midY)/2,'Big Bets')); qg.appendChild(q((M.l+midX)/2,(midY+(M.H-M.b))/2,'Fill-ins')); qg.appendChild(q((midX+(M.W-M.r))/2,(midY+(M.H-M.b))/2,'Time Sinks')); svg.appendChild(qg);
+  }
+
+  function drawPoints(){
+    const svg=el.matrix, NS="http://www.w3.org/2000/svg"; const g=document.createElementNS(NS,'g');
+    const color=t=>({ 'Quick Win':'#58d68d','Big Bet':'#7aa2ff','Fill-in':'#f5b041','Time Sink':'#e74c3c'})[quad(t)];
+    const tt=t=>`${t.title}
+${t.parentId?('Initiative: '+(tasks.find(x=>x.id===t.parentId)?.title||'')+'\n'):''}Impact ${t.impact} · Effort ${t.effort} · Conf ${t.confidence}%
+ICE ${ice(t).toFixed(2)}${t.timeHrs?` · ${t.timeHrs}h`:''}`;
+    items.slices().forEach(t=>{
+      const node=document.createElementNS(NS,'g'); node.setAttribute('class','point'); node.dataset.id=t.id;
+      const cx=sx(t.effort||3), cy=sy(t.impact||3);
+      const c=document.createElementNS(NS,'circle'); c.setAttribute('cx',cx); c.setAttribute('cy',cy); c.setAttribute('r',8); c.setAttribute('fill',color(t)); node.appendChild(c);
+      const label=document.createElementNS(NS,'text'); label.setAttribute('x',cx); label.setAttribute('y',cy-12); label.setAttribute('text-anchor','middle'); label.textContent=t.title.length>22?t.title.slice(0,21)+'…':t.title; node.appendChild(label);
+      const title=document.createElementNS(NS,'title'); title.textContent=tt(t); node.appendChild(title);
+      let drag=false;
+      function down(e){drag=true; node.classList.add('dragging'); e.preventDefault();}
+      function move(e){if(!drag) return; const pt=svg.createSVGPoint(); pt.x=e.clientX; pt.y=e.clientY; const p=pt.matrixTransform(svg.getScreenCTM().inverse()); const ef=Math.max(1,Math.min(5,ix(p.x))); const im=Math.max(1,Math.min(5,iy(p.y)));
+        t.effort=Math.round(ef*10)/10; t.impact=Math.round(im*10)/10; c.setAttribute('cx',sx(t.effort)); c.setAttribute('cy',sy(t.impact)); label.setAttribute('x',sx(t.effort)); label.setAttribute('y',sy(t.impact)-12); renderListsOnly();}
+      function up(){ if(!drag) return; drag=false; node.classList.remove('dragging'); t.effort=Math.round(t.effort*2)/2; t.impact=Math.round(t.impact*2)/2; save(); render();}
+      node.addEventListener('mousedown',down); window.addEventListener('mousemove',move); window.addEventListener('mouseup',up);
+      node.addEventListener('touchstart',e=>down(e.touches[0]),{passive:false}); window.addEventListener('touchmove',e=>move(e.touches[0]),{passive:false}); window.addEventListener('touchend',up);
+      node.addEventListener('dblclick',()=>edit(t.id));
+      g.appendChild(node);
+    });
+    svg.appendChild(g);
+  }
+
+  function sliceRow(t){
+    const q=quad(t), cc=q==='Quick Win'?'good':(q==='Fill-in'?'warn':(q==='Time Sink'?'bad':''));
+    const per=(t.timeHrs>0)?(ice(t)/t.timeHrs).toFixed(2):null;
+    const p=t.parentId?tasks.find(x=>x.id===t.parentId):null;
+    return `<div class="task"><div><strong>${t.title}</strong></div>
+      <div class="meta">${p?`<span class="pill tag">Initiative: ${p.title}</span> `:''}<span class="pill ${cc}">${q}</span>
+      · Impact <span class="mono">${t.impact}</span> · Effort <span class="mono">${t.effort}</span> · Conf <span class="mono">${t.confidence}%</span>${t.timeHrs!=null?` · Time <span class="mono">${t.timeHrs}h</span>`:''} · ICE <span class="mono">${ice(t).toFixed(2)}</span>${per?` · /hr <span class="mono">${per}</span>`:''}${t.costDelay?` · CoD <span class="mono">${t.costDelay}</span>`:''}${t.reversibility?` · ${t.reversibility}`:''}${t.outcome?` · Outcome: ${t.outcome}`:''}</div>
+      <div style="margin-top:6px;display:flex;gap:6px"><button class="btn small" onclick="edit('${t.id}')">Edit</button><button class="btn small" onclick="del_('${t.id}')">Delete</button></div></div>`;
+  }
+  function initRow(t){
+    const n=items.children(t.id).length;
+    return `<div class="task"><div><strong>${t.title}</strong></div>
+      <div class="meta"><span class="pill tag">Initiative</span> · ${n?n+' slice'+(n>1?'s':''):'no slices yet'}${t.costDelay?` · CoD <span class="mono">${t.costDelay}</span>`:''}${t.reversibility?` · ${t.reversibility}`:''}${t.outcome?` · Outcome: ${t.outcome}`:''}</div>
+      <div style="margin-top:6px;display:flex;gap:6px"><button class="btn small" onclick="edit('${t.id}')">Edit</button><button class="btn small" onclick="del_('${t.id}')">Delete</button></div></div>`;
+  }
+
+  function renderListsOnly(){
+    const avail=-1; const mode='ice';
+    let list=items.slices(); if(avail>=0) list=list.filter(t=>t.timeHrs!=null&&t.timeHrs<=avail);
+    list.sort((a,b)=>{ if(mode==='perhour'){const A=perHr(a),B=perHr(b); if(B!==A) return B-A;} const A=ice(a),B=ice(b); if(B!==A) return B-A; const E=(a.effort||0)-(b.effort||0); if(E!==0) return E; const T=((a.timeHrs??Infinity)-(b.timeHrs??Infinity)); if(T!==0) return T; return 0; });
+    el.nextList.innerHTML=list.slice(0,10).map(sliceRow).join('');
+    el.initList.innerHTML=items.inits().sort((a,b)=>a.title.localeCompare(b.title)).map(initRow).join('');
+    el.sliceList.innerHTML=items.slices().sort((a,b)=>b.createdAt.localeCompare(a.createdAt)).map(sliceRow).join('');
+  }
+
+  function render(){ refreshParents(); drawAxes(); drawPoints(); renderListsOnly(); }
+
+  el.exportBtn.addEventListener('click',()=>{const blob=new Blob([JSON.stringify(tasks,null,2)],{type:'application/json'}); const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download='impact_effort_items_v1_1_2.json'; document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(url),500);});
+  el.importFile.addEventListener('change',e=>{const f=e.target.files?.[0]; if(!f) return; const r=new FileReader(); r.onload=()=>{try{const d=JSON.parse(r.result); if(!Array.isArray(d)) throw new Error('Invalid file'); tasks=d; save(); render();}catch(err){alert('Import failed: '+err.message)}}; r.readAsText(f)});
+  el.demoBtn.addEventListener('click',()=>{
+    const now=new Date().toISOString(); const A={id:uid(),type:'initiative',title:'Nav IA redo',impact:4,effort:3,confidence:70,outcome:'Reduce nav friction',createdAt:now};
+    const B={id:uid(),type:'initiative',title:'Brand font update',impact:4,effort:3,confidence:70,outcome:'Improve table legibility',createdAt:now};
+    const C={id:uid(),type:'initiative',title:'Marketing request system',impact:4,effort:3,confidence:70,outcome:'Intake + SLA',createdAt:now};
+    tasks=[A,B,C,
+      {type:'slice',parentId:A.id,title:'Scope spike: inventory + top buckets',impact:4.5,effort:2,confidence:85,timeHrs:1.5,createdAt:now,id:uid()},
+      {type:'slice',parentId:A.id,title:'Set up internal tree test',impact:4,effort:2.5,confidence:80,timeHrs:2,createdAt:now,id:uid()},
+      {type:'slice',parentId:B.id,title:'Sandbox: 3 font candidates',impact:3.8,effort:1.5,confidence:85,timeHrs:1,createdAt:now,id:uid()},
+      {type:'slice',parentId:B.id,title:'Enable tnum on heavy table',impact:3.6,effort:1.2,confidence:80,timeHrs:0.75,createdAt:now,id:uid()},
+      {type:'slice',parentId:C.id,title:'Draft intake form + SLA (pilot)',impact:4.2,effort:2.2,confidence:80,timeHrs:1.5,createdAt:now,id:uid()},
+      {type:'slice',parentId:C.id,title:'Announce + schedule daily triage',impact:3.4,effort:1,confidence:90,timeHrs:0.5,createdAt:now,id:uid()},
+    ];
+    save(); render();
+  });
+  el.resetBtn.addEventListener('click',()=>{ if(confirm('Clear all items from this browser?')){ tasks=[]; save(); render(); }});
+
+  onType(); render();
+})();
+</script>
+</body>
+</html>
